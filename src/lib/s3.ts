@@ -13,17 +13,25 @@ export async function uploadToS3(
 
   const file_key = "uploads/" + Date.now().toString() + "-" + file.name.replace(/\s+/g, "-");
 
-  const command = new PutObjectCommand({
-    Bucket: process.env.NEXT_PUBLIC_S3_BUCKET_NAME!,
-    Key: file_key,
-    Body: file as Blob, // ✅ FIX: ensures correct browser-compatible type
-    ContentType: file.type, // Optional but good practice
-  });
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-  await s3.send(command);
+    const command = new PutObjectCommand({
+      Bucket: process.env.NEXT_PUBLIC_S3_BUCKET_NAME!,
+      Key: file_key,
+      Body: buffer,
+      ContentType: file.type,
+    });
 
-  return {
-    file_key,
-    file_name: file.name,
-  };
+    await s3.send(command);
+
+    return {
+      file_key,
+      file_name: file.name,
+    };
+  } catch (error) {
+    console.error("Error uploading to S3:", error);
+    throw error;
+  }
 }
