@@ -1,24 +1,87 @@
 "use client";
-
 import { uploadToS3 } from "@/lib/s3";
-import { Inbox } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Inbox, Loader2 } from "lucide-react";
 import React from "react";
 import { useDropzone } from "react-dropzone";
+import axios from "axios";
+import { toast } from "react-hot-toast";
+import { useRouter } from "next/navigation";
+
+// https://github.com/aws/aws-sdk-js-v3/issues/4126
 
 const FileUpload = () => {
+  const router = useRouter();
+  const [uploading, setUploading] = React.useState(false);
+  const { mutate} = useMutation({
+    mutationFn: async ({
+      file_key,
+      file_name,
+    }: {
+      file_key: string;
+      file_name: string;
+    }) => {
+      console.log("Starting API call with:", { file_key, file_name });
+      
+      // First test the simple endpoint
+      try {
+        console.log("Testing simple endpoint...");
+        const testResponse = await axios.post("/api/test-simple", {
+          file_key,
+          file_name,
+        });
+        console.log("Simple endpoint success:", testResponse.data);
+      } catch (testErr: any) {
+        console.error("Simple endpoint failed:", testErr.response?.data || testErr.message);
+      }
+
+      console.log("Calling create-chat endpoint...");
+      const response = await axios.post("/api/create-chat", {
+        file_key,
+        file_name,
+      });
+      console.log("Create-chat response:", response.data);
+      return response.data;
+    },
+  });
+
   const { getRootProps, getInputProps } = useDropzone({
     accept: { "application/pdf": [".pdf"] },
     maxFiles: 1,
     onDrop: async (acceptedFiles) => {
       const file = acceptedFiles[0];
-      if (file.size > 10 * 1024 * 1024) return;
+      if (file.size > 10 * 1024 * 1024) {
+        // bigger than 10mb!
+        toast.error("File too large");
+        return;
+      }
 
-      const data = await uploadToS3(file);
-      console.log("Uploaded file info:", data);
-      // You can do something with data.file_key or data.file_name here
+      try {
+        setUploading(true);
+        const data = await uploadToS3(file);
+        console.log("meow", data);
+        if (!data?.file_key || !data.file_name) {
+          toast.error("Something went wrong");
+          return;
+        }
+        mutate(data, {
+          onSuccess: ({ chat_id }) => {
+            toast.success("Chat created!");
+            router.push(`/chat/${chat_id}`);
+          },
+          onError: (err: any) => {
+            console.error("Error creating chat:", err);
+            const errorMessage = err?.response?.data?.error || err?.response?.data?.details || err?.message || "Error creating chat";
+            toast.error(errorMessage);
+          },
+        });
+      } catch (error) {
+        console.log(error);
+      } finally {
+        setUploading(false);
+      }
     },
   });
-
   return (
     <div className="p-2 bg-white rounded-xl">
       <div
@@ -28,8 +91,20 @@ const FileUpload = () => {
         })}
       >
         <input {...getInputProps()} />
-        <Inbox className="w-10 h-10 text-blue-500" />
-        <p className="mt-2 text-sm text-slate-400">Drop PDF Here</p>
+        {uploading  ? (
+          <>
+            {/* loading state */}
+            <Loader2 className="h-10 w-10 text-blue-500 animate-spin" />
+            <p className="mt-2 text-sm text-slate-400">
+              Spilling Tea to GPT...
+            </p>
+          </>
+        ) : (
+          <>
+            <Inbox className="w-10 h-10 text-blue-500" />
+            <p className="mt-2 text-sm text-slate-400">Drop PDF Here</p>
+          </>
+        )}
       </div>
     </div>
   );
