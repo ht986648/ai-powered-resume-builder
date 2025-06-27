@@ -1,21 +1,80 @@
 "use client";
 
-import { uploadToS3 } from "@/lib/s3";
 import { Inbox } from "lucide-react";
-import React from "react";
+import React, { useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const FileUpload = () => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string>("");
+  const router = useRouter();
+
   const { getRootProps, getInputProps } = useDropzone({
     accept: { "application/pdf": [".pdf"] },
     maxFiles: 1,
     onDrop: async (acceptedFiles) => {
       const file = acceptedFiles[0];
-      if (file.size > 10 * 1024 * 1024) return;
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadStatus("File too large. Please upload a file smaller than 10MB.");
+        return;
+      }
 
-      const data = await uploadToS3(file);
-      console.log("Uploaded file info:", data);
-      // You can do something with data.file_key or data.file_name here
+      setIsProcessing(true);
+      setUploadStatus("Uploading file to S3...");
+
+      try {
+        // Upload to S3 via API route
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadResponse = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        const uploadResult = await uploadResponse.json();
+
+        if (!uploadResult.success) {
+          setUploadStatus("❌ Error uploading file: " + uploadResult.error);
+          return;
+        }
+
+        setUploadStatus("Generating vector embeddings...");
+
+        // Process PDF and generate embeddings
+        const response = await fetch("/api/process-pdf", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileKey: uploadResult.file_key,
+            fileName: uploadResult.file_name,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setUploadStatus("✅ PDF processed successfully! Redirecting to chat...");
+          console.log("Chat created with ID:", result.chatId);
+          
+          // Redirect to chat page after a short delay
+          setTimeout(() => {
+            router.push(`/chat/${result.chatId}`);
+          }, 1500);
+        } else {
+          setUploadStatus("❌ Error processing PDF: " + result.error);
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        setUploadStatus("❌ Error uploading or processing file");
+      } finally {
+        setIsProcessing(false);
+      }
     },
   });
 
@@ -28,8 +87,19 @@ const FileUpload = () => {
         })}
       >
         <input {...getInputProps()} />
-        <Inbox className="w-10 h-10 text-blue-500" />
-        <p className="mt-2 text-sm text-slate-400">Drop PDF Here</p>
+        {isProcessing ? (
+          <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+        ) : (
+          <Inbox className="w-10 h-10 text-blue-500" />
+        )}
+        <p className="mt-2 text-sm text-slate-400">
+          {isProcessing ? "Processing..." : "Drop PDF Here"}
+        </p>
+        {uploadStatus && (
+          <p className="mt-2 text-sm text-center max-w-xs">
+            {uploadStatus}
+          </p>
+        )}
       </div>
     </div>
   );
