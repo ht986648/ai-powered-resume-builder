@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 const FileUpload = () => {
   const router = useRouter();
   const [uploading, setUploading] = React.useState(false);
-  const { mutate, isPending } = useMutation({
+  const { mutate} = useMutation({
     mutationFn: async ({
       file_key,
       file_name,
@@ -21,10 +21,26 @@ const FileUpload = () => {
       file_key: string;
       file_name: string;
     }) => {
+      console.log("Starting API call with:", { file_key, file_name });
+      
+      // First test the simple endpoint
+      try {
+        console.log("Testing simple endpoint...");
+        const testResponse = await axios.post("/api/test-simple", {
+          file_key,
+          file_name,
+        });
+        console.log("Simple endpoint success:", testResponse.data);
+      } catch (testErr: any) {
+        console.error("Simple endpoint failed:", testErr.response?.data || testErr.message);
+      }
+
+      console.log("Calling create-chat endpoint...");
       const response = await axios.post("/api/create-chat", {
         file_key,
         file_name,
       });
+      console.log("Create-chat response:", response.data);
       return response.data;
     },
   });
@@ -53,9 +69,10 @@ const FileUpload = () => {
             toast.success("Chat created!");
             router.push(`/chat/${chat_id}`);
           },
-          onError: (err) => {
-            toast.error("Error creating chat");
-            console.error(err);
+          onError: (err: any) => {
+            console.error("Error creating chat:", err);
+            const errorMessage = err?.response?.data?.error || err?.response?.data?.details || err?.message || "Error creating chat";
+            toast.error(errorMessage);
           },
         });
       } catch (error) {
@@ -74,7 +91,7 @@ const FileUpload = () => {
         })}
       >
         <input {...getInputProps()} />
-        {uploading || isPending ? (
+        {uploading  ? (
           <>
             {/* loading state */}
             <Loader2 className="h-10 w-10 text-blue-500 animate-spin" />
