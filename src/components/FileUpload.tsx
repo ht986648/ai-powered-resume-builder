@@ -1,6 +1,5 @@
 "use client";
 
-import { uploadToS3 } from "@/lib/s3";
 import { Inbox } from "lucide-react";
 import React from "react";
 import { useDropzone } from "react-dropzone";
@@ -13,8 +12,6 @@ const FileUpload = () => {
       const file = acceptedFiles[0];
       if (file.size > 10 * 1024 * 1024) return;
 
-      const data = await uploadToS3(file);
-      console.log("Uploaded file info:", data);
       // You can do something with data.file_key or data.file_name here
     },
   });
